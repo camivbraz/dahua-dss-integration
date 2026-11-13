@@ -1,0 +1,609 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>SPX–DSS Integration</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: single ~70ch column, sections as bands of cards; orgCodes always in mono,
+   status always in a chip. Industrial graphite + signal orange. */
+:root{
+  --bg:#f4f5f6; --surface:#ffffff; --surface-2:#e9ebed; --surface-3:#dfe3e6;
+  --fg:#15181c; --fg-muted:#5b6470; --line:#d6dade;
+  --accent:#d1540f; --accent-ink:#8f3806; --accent-wash:#fbeee6;
+  --ok:#1a7a4e; --ok-wash:#e4f3ea;
+  --warn:#9a6300; --warn-wash:#fbf0da;
+  --stop:#b23030; --stop-wash:#fae9e9;
+  --on-accent:#ffffff;
+  --font-display:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --font-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  --radius:10px;
+  --shadow:0 1px 2px rgba(21,24,28,.06),0 6px 18px rgba(21,24,28,.05);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#121518; --surface:#1a1e22; --surface-2:#22272c; --surface-3:#2b3137;
+    --fg:#eef1f4; --fg-muted:#98a3ae; --line:#2e353b;
+    --accent:#ff7f3d; --accent-ink:#ffa473; --accent-wash:#2e1d13;
+    --ok:#4ec287; --ok-wash:#14271e;
+    --warn:#e0a83f; --warn-wash:#2a2112;
+    --stop:#f0776f; --stop-wash:#2d1718;
+    --on-accent:#ffffff;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.3);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121518; --surface:#1a1e22; --surface-2:#22272c; --surface-3:#2b3137;
+  --fg:#eef1f4; --fg-muted:#98a3ae; --line:#2e353b;
+  --accent:#ff7f3d; --accent-ink:#ffa473; --accent-wash:#2e1d13;
+  --ok:#4ec287; --ok-wash:#14271e;
+  --warn:#e0a83f; --warn-wash:#2a2112;
+  --stop:#f0776f; --stop-wash:#2d1718;
+  --on-accent:#ffffff;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.3);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:var(--font-body); font-size:16px; line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+body::before{
+  content:""; position:fixed; inset:0 0 auto; height:env(safe-area-inset-top,0px);
+  background:var(--surface); z-index:20; border-bottom:1px solid var(--line);
+}
+h1,h2,h3{font-family:var(--font-display); text-wrap:balance; margin:0; line-height:1.15}
+p{margin:0}
+a{color:var(--accent-ink)}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:4px}
+
+/* ---------- top bar ---------- */
+.topbar{
+  position:sticky; top:env(safe-area-inset-top,0px); z-index:15;
+  background:var(--surface); border-bottom:1px solid var(--line);
+}
+.topbar-in{
+  max-width:1080px; margin:0 auto;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:10px;
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+}
+.topbar-mark{
+  font-family:var(--font-display); font-weight:700; font-size:.82rem;
+  letter-spacing:.09em; text-transform:uppercase; color:var(--fg);
+  white-space:nowrap;
+}
+.topbar-mark span{color:var(--accent)}
+.topnav{display:flex; gap:4px; flex-wrap:wrap; margin-left:auto}
+.topnav a{
+  font-size:.8rem; font-weight:500; color:var(--fg-muted); text-decoration:none;
+  padding:5px 9px; border-radius:99px; white-space:nowrap;
+}
+.topnav a:hover{background:var(--surface-2); color:var(--fg)}
+
+/* ---------- structure ---------- */
+.wrap{
+  max-width:1080px; margin:0 auto;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:36px 64px;
+  display:flex; flex-direction:column; gap:52px;
+}
+section{display:flex; flex-direction:column; gap:20px; scroll-margin-top:84px}
+.eyebrow{
+  font-family:var(--font-mono); font-size:.72rem; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--accent); font-weight:500;
+}
+h2{font-size:clamp(1.3rem,2.4vw,1.72rem); font-weight:700; letter-spacing:-.01em}
+.lede{color:var(--fg-muted); max-width:66ch}
+.sec-head{display:flex; flex-direction:column; gap:7px}
+
+/* ---------- hero ---------- */
+.hero{display:flex; flex-direction:column; gap:22px; padding-block:8px 0}
+.hero h1{
+  font-size:clamp(1.95rem,5vw,3rem); font-weight:700; letter-spacing:-.025em;
+  max-width:30ch;
+}
+.hero h1 em{font-style:normal; color:var(--accent)}
+.rule{height:3px; background:var(--accent); width:56px; border-radius:2px}
+
+/* ---------- chips ---------- */
+.chip{
+  display:inline-flex; align-items:center; gap:5px;
+  font-family:var(--font-mono); font-size:.7rem; font-weight:500;
+  letter-spacing:.04em; text-transform:uppercase;
+  padding:3px 8px; border-radius:99px; border:1px solid transparent;
+  white-space:nowrap;
+}
+.chip::before{content:""; width:6px; height:6px; border-radius:99px; background:currentColor}
+.chip-ok{color:var(--ok); background:var(--ok-wash); border-color:color-mix(in srgb,var(--ok) 28%,transparent)}
+.chip-warn{color:var(--warn); background:var(--warn-wash); border-color:color-mix(in srgb,var(--warn) 30%,transparent)}
+.chip-stop{color:var(--stop); background:var(--stop-wash); border-color:color-mix(in srgb,var(--stop) 28%,transparent)}
+.chip-open{color:var(--fg-muted); background:var(--surface-2); border-color:var(--line)}
+
+/* ---------- orgCode anatomy ---------- */
+.anatomy{
+  background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+  box-shadow:var(--shadow); padding:22px 20px; display:flex; flex-direction:column; gap:18px;
+}
+.anatomy-row{display:flex; gap:6px; flex-wrap:wrap}
+.seg{flex:1 1 86px; min-width:0; display:flex; flex-direction:column; gap:7px}
+.seg-code{
+  font-family:var(--font-mono); font-size:clamp(1.05rem,2.6vw,1.5rem); font-weight:500;
+  text-align:center; padding:11px 4px; border-radius:8px;
+  background:var(--surface-2); color:var(--fg); border:1px solid var(--line);
+}
+.seg:last-child .seg-code{background:var(--accent-wash); border-color:var(--accent); color:var(--accent-ink)}
+.seg-label{text-align:center; font-size:.73rem; line-height:1.3; color:var(--fg-muted)}
+.seg-label b{display:block; color:var(--fg); font-weight:600; font-size:.78rem}
+.anatomy-note{
+  font-size:.88rem; color:var(--fg-muted); border-top:1px solid var(--line);
+  padding-top:14px; max-width:68ch;
+}
+
+/* ---------- tree ---------- */
+.tree{
+  background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+  box-shadow:var(--shadow); padding:20px 18px; overflow-x:auto;
+}
+.tree ul{list-style:none; margin:0; padding:0 0 0 20px}
+.tree>ul{padding-left:0}
+.tree li{position:relative; padding:3px 0}
+.tree ul ul li::before{
+  content:""; position:absolute; left:-12px; top:0; bottom:0;
+  border-left:1px solid var(--line);
+}
+.tree ul ul li:last-child::before{bottom:auto; height:16px}
+.tree ul ul li::after{
+  content:""; position:absolute; left:-12px; top:16px; width:10px;
+  border-top:1px solid var(--line);
+}
+.node{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; min-width:0}
+.node code{
+  font-family:var(--font-mono); font-size:.8rem; color:var(--fg-muted);
+  background:var(--surface-2); padding:1px 6px; border-radius:5px; white-space:nowrap;
+}
+.node b{font-weight:600; font-size:.95rem}
+.node small{color:var(--fg-muted); font-size:.78rem}
+.node.is-target b{color:var(--accent-ink)}
+.node.is-target code{background:var(--accent-wash); color:var(--accent-ink)}
+
+/* ---------- steps ---------- */
+.steps{display:flex; flex-direction:column; gap:12px; counter-reset:step}
+.step{
+  background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+  box-shadow:var(--shadow); padding:18px 18px 18px 16px;
+  display:grid; grid-template-columns:auto 1fr; gap:16px; align-items:start;
+}
+.step-n{
+  counter-increment:step; font-family:var(--font-mono); font-weight:500; font-size:.82rem;
+  width:30px; height:30px; display:grid; place-items:center; border-radius:99px;
+  background:var(--accent); color:var(--on-accent);
+}
+.step-n::before{content:counter(step,decimal-leading-zero)}
+.step-body{display:flex; flex-direction:column; gap:9px; min-width:0}
+.step-top{display:flex; align-items:center; gap:9px; flex-wrap:wrap}
+.step h3{font-size:1.02rem; font-weight:600}
+.step p{font-size:.92rem; color:var(--fg-muted)}
+.who{
+  font-family:var(--font-mono); font-size:.68rem; letter-spacing:.06em;
+  text-transform:uppercase; padding:2px 7px; border-radius:4px;
+  background:var(--surface-2); color:var(--fg-muted); border:1px solid var(--line);
+}
+.who-spx{background:var(--accent-wash); color:var(--accent-ink); border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
+.endpoint{
+  font-family:var(--font-mono); font-size:.78rem; color:var(--fg);
+  background:var(--surface-2); border:1px solid var(--line); border-radius:6px;
+  padding:7px 9px; overflow-x:auto; white-space:nowrap;
+}
+.endpoint .verb{font-weight:500; color:var(--accent-ink)}
+pre{
+  font-family:var(--font-mono); font-size:.76rem; line-height:1.55; margin:0;
+  background:var(--surface-2); border:1px solid var(--line); border-radius:6px;
+  padding:10px 11px; overflow-x:auto; color:var(--fg);
+}
+.key{color:var(--accent-ink)}
+
+/* ---------- test table ---------- */
+.tablewrap{
+  overflow-x:auto; background:var(--surface); border:1px solid var(--line);
+  border-radius:var(--radius); box-shadow:var(--shadow);
+}
+table{border-collapse:collapse; width:100%; min-width:620px; font-size:.88rem}
+th,td{text-align:left; padding:11px 14px; border-bottom:1px solid var(--line); vertical-align:top}
+th{
+  font-family:var(--font-mono); font-size:.7rem; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--fg-muted); font-weight:500; background:var(--surface-2);
+}
+tr:last-child td{border-bottom:none}
+td code{font-family:var(--font-mono); font-size:.79rem; white-space:nowrap}
+td.what{color:var(--fg-muted)}
+
+/* ---------- cards ---------- */
+.cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px}
+.card{
+  background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+  box-shadow:var(--shadow); padding:17px; display:flex; flex-direction:column; gap:9px;
+  min-width:0;
+}
+.card .chip{align-self:flex-start}
+.card h3{font-size:.98rem; font-weight:600}
+.card p{font-size:.89rem; color:var(--fg-muted)}
+.card-stop{border-left:3px solid var(--stop)}
+.card-warn{border-left:3px solid var(--warn)}
+.card-ok{border-left:3px solid var(--ok)}
+
+/* ---------- options ---------- */
+.options{display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px}
+.option{
+  background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+  box-shadow:var(--shadow); padding:20px; display:flex; flex-direction:column; gap:13px;
+  min-width:0;
+}
+.option.pick{border-color:var(--accent); border-width:2px}
+.option-head{display:flex; align-items:center; gap:9px; flex-wrap:wrap}
+.option h3{font-size:1.05rem; font-weight:700}
+.option ul{margin:0; padding-left:18px; display:flex; flex-direction:column; gap:6px}
+.option li{font-size:.9rem; color:var(--fg-muted)}
+.option li b{color:var(--fg); font-weight:600}
+.badge-pick{
+  font-family:var(--font-mono); font-size:.67rem; letter-spacing:.08em; text-transform:uppercase;
+  background:var(--accent); color:var(--on-accent); padding:3px 8px; border-radius:99px; font-weight:500;
+}
+
+/* ---------- person flow ---------- */
+.flow{display:flex; gap:10px; align-items:stretch; flex-wrap:wrap}
+.flow-box{
+  flex:1 1 180px; min-width:0; background:var(--surface); border:1px solid var(--line);
+  border-radius:var(--radius); box-shadow:var(--shadow); padding:15px;
+  display:flex; flex-direction:column; gap:6px;
+}
+.flow-box .who{align-self:flex-start}
+.flow-box b{font-size:.93rem; font-weight:600}
+.flow-box span{font-size:.84rem; color:var(--fg-muted)}
+.flow-arrow{
+  align-self:center; color:var(--accent); font-size:1.3rem; line-height:1;
+  font-family:var(--font-mono);
+}
+@media (max-width:620px){ .flow-arrow{transform:rotate(90deg)} }
+
+/* ---------- footer ---------- */
+footer{
+  border-top:1px solid var(--line); padding-top:22px;
+  display:flex; flex-direction:column; gap:8px;
+  font-size:.82rem; color:var(--fg-muted);
+}
+footer b{color:var(--fg); font-weight:600}
+@media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
+</style>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="topbar-mark">SPX <span>&rarr;</span> DSS</div>
+    <nav class="topnav">
+      <a href="#model">Model</a>
+      <a href="#lifecycle">Folder lifecycle</a>
+      <a href="#tests">Tests</a>
+      <a href="#gotchas">Gotchas</a>
+      <a href="#proposal">Proposal</a>
+      <a href="#operations">Operations</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="hero">
+    <div class="rule"></div>
+    <h1>How SPX will register people in <em>DSS</em></h1>
+  </div>
+
+  <!-- ============ MODEL ============ -->
+  <section id="model">
+    <div class="sec-head">
+      <div class="eyebrow">01 &middot; The model</div>
+      <h2>Each folder is a Person Group, and each folder has a code</h2>
+      <p class="lede">The proposed folder structure matches the DSS model. The difference is that DSS doesn't identify a folder by its name. It uses a numeric code that it generates itself, called the <b>orgCode</b>.</p>
+    </div>
+
+    <div class="anatomy">
+      <div class="anatomy-row">
+        <div class="seg">
+          <div class="seg-code">001</div>
+          <div class="seg-label"><b>Root</b>All Persons<br>and Vehicles</div>
+        </div>
+        <div class="seg">
+          <div class="seg-code">001</div>
+          <div class="seg-label"><b>Level 2</b>SOC</div>
+        </div>
+        <div class="seg">
+          <div class="seg-code">001</div>
+          <div class="seg-label"><b>Level 3</b>Site<br>(SOC-ES2)</div>
+        </div>
+        <div class="seg">
+          <div class="seg-code">003</div>
+          <div class="seg-label"><b>Level 4</b>Integration<br>folder</div>
+        </div>
+      </div>
+      <p class="anatomy-note">Read together, the code for SOC-ES2's integration folder is <b>001001001003</b>. Each level adds 3 digits, up to about 9 levels. DSS creates the code when the folder is created, so SPX never makes one up. It always looks it up.</p>
+    </div>
+
+    <div class="tree">
+      <ul>
+        <li>
+          <div class="node"><code>001</code> <b>All Persons and Vehicles</b> <small>root, cannot be deleted</small></div>
+          <ul>
+            <li>
+              <div class="node"><code>001001</code> <b>SOC</b> <small>6 sites</small></div>
+              <ul>
+                <li>
+                  <div class="node"><code>001001001</code> <b>SOC-ES2</b></div>
+                  <ul>
+                    <li><div class="node"><code>001001001001</code> <b>SOC-ES2_OPERACIONAL</b></div></li>
+                    <li><div class="node"><code>001001001002</code> <b>SOC-ES2_ADMINISTRATIVO</b></div></li>
+                    <li><div class="node is-target"><code>001001001003</code> <b>INTEGRAÇÃO</b> <small>&larr; SPX registers people here</small></div></li>
+                  </ul>
+                </li>
+                <li><div class="node"><code>001001002</code> <b>SOC-SP18P</b></div></li>
+                <li><div class="node"><code>001001003</code> <b>SOC-RJ4</b></div></li>
+                <li><div class="node"><code>001001004</code> <b>SOC-PR4</b></div></li>
+                <li><div class="node"><code>001001006</code> <b>SOC-RJ6</b></div></li>
+                <li><div class="node"><code>001001007</code> <b>SOC-SP35</b></div></li>
+              </ul>
+            </li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+    <p class="lede">This is our server's actual tree today, read through the API. Each SOC gets its own integration folder, and that folder's <b>orgCode</b> is what SPX needs to store.</p>
+  </section>
+
+  <!-- ============ LIFECYCLE ============ -->
+  <section id="lifecycle">
+    <div class="sec-head">
+      <div class="eyebrow">02 &middot; Folder lifecycle</div>
+      <h2>From creating the folder to a registered person</h2>
+      <p class="lede">Five steps, each labeled with who makes the call. The proposal further down keeps the first two on our side.</p>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-n"></div>
+        <div class="step-body">
+          <div class="step-top"><h3>Create the SOC folder</h3><span class="who">Our team</span></div>
+          <p>Sends the parent folder, the name and <b>which access profiles can see the folder</b>. DSS replies with the new orgCode.</p>
+          <div class="endpoint"><span class="verb">POST</span> /obms/api/v1.1/acs/person-group</div>
+          <pre>{ "parentOrgCode": "001001001",
+  "orgName": "INTEGRACAO",
+  <span class="key">"roleIds"</span>: ["1","2","3","5","6"] }
+
+&rarr; { "orgCode": "001001001003" }</pre>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-n"></div>
+        <div class="step-body">
+          <div class="step-top"><h3>Tag it as an integration folder</h3><span class="who">Our team</span></div>
+          <p>A second call stores SPX's own SOC code in the <b>associateId</b> field. That lets SPX find the folder by a code it controls, without relying on the folder name.</p>
+          <div class="endpoint"><span class="verb">PUT</span> /obms/api/v1.1/acs/person-group/001001001003</div>
+          <pre>{ "orgName": "INTEGRACAO",
+  "sourceType": 3,
+  <span class="key">"associateId"</span>: "SOC-ES2" }</pre>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-n"></div>
+        <div class="step-body">
+          <div class="step-top"><h3>SPX looks up the codes</h3><span class="who who-spx">SPX</span></div>
+          <p>One call returns the full tree: code, name, parent folder, headcount and associateId. SPX keeps the pair <b>SOC code &rarr; orgCode</b>.</p>
+          <div class="endpoint"><span class="verb">GET</span> /obms/api/v1.1/acs/person-group/list</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-n"></div>
+        <div class="step-body">
+          <div class="step-top"><h3>Register the person</h3><span class="who who-spx">SPX</span></div>
+          <p>Each person is registered with the orgCode of their SOC's integration folder. Updates and deletions also go through the API, and DSS publishes every change to a message queue.</p>
+          <div class="endpoint"><span class="verb">POST</span> /obms/api/v1.1/acs/person</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-n"></div>
+        <div class="step-body">
+          <div class="step-top"><h3>Delete, when needed</h3><span class="who">Our team</span></div>
+          <p>Folder deletion is <b>asynchronous</b>. The API confirms right away and the folder leaves the tree a few seconds later. Wait for one deletion to finish before sending the next.</p>
+          <div class="endpoint"><span class="verb">DELETE</span> /obms/api/v1.1/acs/person-group/{orgCode}?mode=1</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TESTS ============ -->
+  <section id="tests">
+    <div class="sec-head">
+      <div class="eyebrow">03 &middot; What we tested</div>
+      <h2>Every call was run on our 8.6 server first</h2>
+      <p class="lede">The documentation covers DSS 8.8 and our server runs 8.6, so nothing here is assumed. Each row was executed on 4 Nov 2026 against a test folder that was created and then deleted.</p>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Call</th><th>Result</th><th>What we found</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>GET /person-group/list</code></td>
+            <td><span class="chip chip-ok">Works</span></td>
+            <td class="what">Returns the full tree with code, name, parent folder and headcount.</td>
+          </tr>
+          <tr>
+            <td><code>GET /person-group/{orgCode}</code></td>
+            <td><span class="chip chip-ok">Works</span></td>
+            <td class="what">Folder details, including the profiles that can see it.</td>
+          </tr>
+          <tr>
+            <td><code>POST /person-group</code></td>
+            <td><span class="chip chip-warn">Needs a fix</span></td>
+            <td class="what">Requires an access-profile field (<code>roleIds</code>) that the documentation leaves out. Without it, the error is generic.</td>
+          </tr>
+          <tr>
+            <td><code>POST</code> with <code>sourceType: 3</code></td>
+            <td><span class="chip chip-stop">Rejected</span></td>
+            <td class="what">Error 141088: a third-party folder can't be created directly on the platform.</td>
+          </tr>
+          <tr>
+            <td><code>POST</code> with <code>associateId</code></td>
+            <td><span class="chip chip-warn">Ignored</span></td>
+            <td class="what">Returns success but stores an empty value. It only saves on edit.</td>
+          </tr>
+          <tr>
+            <td><code>PUT /person-group/{orgCode}</code></td>
+            <td><span class="chip chip-ok">Works</span></td>
+            <td class="what">Accepts <code>associateId</code> and <code>sourceType: 3</code>, and can rename the folder.</td>
+          </tr>
+          <tr>
+            <td><code>DELETE ?mode=1</code></td>
+            <td><span class="chip chip-ok">Works</span></td>
+            <td class="what">Confirms immediately, removes shortly after. A second deletion sent while the first is running is rejected.</td>
+          </tr>
+          <tr>
+            <td><code>mode=1</code> vs <code>mode=2</code></td>
+            <td><span class="chip chip-open">Open</span></td>
+            <td class="what">Identical on an empty folder. The difference only shows with people inside, which needs a pilot SOC.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ GOTCHAS ============ -->
+  <section id="gotchas">
+    <div class="sec-head">
+      <div class="eyebrow">04 &middot; Three gotchas</div>
+      <h2>What the documentation doesn't say</h2>
+      <p class="lede">None of these blocks the integration. Each would have cost days of back-and-forth if we had found it later.</p>
+    </div>
+
+    <div class="cards">
+      <div class="card card-warn">
+        <span class="chip chip-warn">Missing field</span>
+        <h3>Creating a folder requires access profiles</h3>
+        <p>Every folder carries the list of DSS user profiles that can see it. The documentation doesn't mention this field, and without it DSS only replies &ldquo;Failed&rdquo;. These profiles are our internal permissions, so SPX shouldn't have to manage them.</p>
+      </div>
+      <div class="card card-stop">
+        <span class="chip chip-stop">Rejected</span>
+        <h3>A third-party folder can't be created as third-party</h3>
+        <p>DSS blocks tagging a folder as externally sourced at creation time. The same tag is accepted afterwards, as an edit.</p>
+      </div>
+      <div class="card card-warn">
+        <span class="chip chip-warn">Silent</span>
+        <h3>The SOC code only saves on edit</h3>
+        <p>At creation, DSS accepts the SOC code, replies &ldquo;Success&rdquo; and stores nothing. It only saves through an edit, so creating an integration folder takes <b>two calls</b>.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PROPOSAL ============ -->
+  <section id="proposal">
+    <div class="sec-head">
+      <div class="eyebrow">05 &middot; Proposal</div>
+      <h2>Who creates the folders</h2>
+      <p class="lede">Both options work. The difference is how much of the internal DSS setup SPX has to know about.</p>
+    </div>
+
+    <div class="options">
+      <div class="option pick">
+        <div class="option-head">
+          <h3>Option A: our team creates them</h3>
+          <span class="badge-pick">Recommended</span>
+        </div>
+        <ul>
+          <li>We set up each SOC's folder and <b>hand over the orgCode, ready to use</b>.</li>
+          <li>SPX doesn't deal with permission profiles or the two-call creation.</li>
+          <li>SPX uses the orgCode as its key. It <b>doesn't change when a folder is renamed</b>.</li>
+          <li>SPX's side of the integration comes down to <b>two calls</b>: read the folder list and register people.</li>
+        </ul>
+      </div>
+      <div class="option">
+        <div class="option-head">
+          <h3>Option B: SPX creates them</h3>
+          <span class="chip chip-open">Viable</span>
+        </div>
+        <ul>
+          <li>We first agree on <b>which profiles</b> go into each folder.</li>
+          <li>Each new folder takes <b>two calls</b>: create, then tag.</li>
+          <li>Any new profile in DSS means a change to SPX's code.</li>
+          <li>Makes sense if new SOCs are added often and in volume.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="flow">
+      <div class="flow-box">
+        <span class="who who-spx">SPX</span>
+        <b>Registered at the source</b>
+        <span>The person is entered in SPX with their SOC code.</span>
+      </div>
+      <div class="flow-arrow">&rarr;</div>
+      <div class="flow-box">
+        <span class="who who-spx">SPX</span>
+        <b>Mapped to an orgCode</b>
+        <span>SPX finds that SOC's folder in the list.</span>
+      </div>
+      <div class="flow-arrow">&rarr;</div>
+      <div class="flow-box">
+        <span class="who">DSS</span>
+        <b>Person created in the folder</b>
+        <span>Ready for facial recognition at the turnstiles.</span>
+      </div>
+      <div class="flow-arrow">&rarr;</div>
+      <div class="flow-box">
+        <span class="who">DSS</span>
+        <b>Change published</b>
+        <span>Every addition, update and deletion goes to the message queue.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ OPERATIONS ============ -->
+  <section id="operations">
+    <div class="sec-head">
+      <div class="eyebrow">06 &middot; Operations</div>
+      <h2>Four things the SPX technical team needs to know</h2>
+    </div>
+
+    <div class="cards">
+      <div class="card card-ok">
+        <h3>Address: hostname, not IP</h3>
+        <p>The connection is HTTPS on port 443. If SPX points at an IP and the server's address changes, the integration breaks with no warning, so a hostname is safer. Plain HTTP on port 80 only works if SPX's server IP is added to an allowlist on the DSS server.</p>
+      </div>
+      <div class="card card-ok">
+        <h3>Token authentication</h3>
+        <p>Token with automatic renewal every ~20 seconds. It's already implemented and tested on our side. SPX only needs to plan for the renewal.</p>
+      </div>
+      <div class="card card-warn">
+        <h3>Deletion is asynchronous</h3>
+        <p>The API confirms before the work is done, so &ldquo;success&rdquo; doesn't mean &ldquo;deleted&rdquo;. Check the folder list to be sure. A second deletion sent while one is still running is rejected, so space them out or retry.</p>
+      </div>
+      <div class="card card-warn">
+        <h3>Deleted codes are never reused</h3>
+        <p>If a folder is deleted and recreated, it gets a new orgCode. SPX should never predict codes, and should refresh the folder list regularly or whenever a registration fails with a missing folder.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p><b>Source:</b> DSS HTTP API documentation v8.8, issued by Dahua to SPX Logística, checked against our DSS 8.6 server on 4 Nov 2026.</p>
+    <p>The tests created a temporary folder, ran create, read, update and delete against it, and left the server as it was: 18 folders, nothing left behind.</p>
+  </footer>
+
+</div>
+
+</body></html>
